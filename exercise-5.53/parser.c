@@ -292,7 +292,3 @@ extern cell parse(char *prog) {
     }
 }
 
-/*int main(int argc, char **argv) {
-    parse("[-11.23e-3, [2, \"aaa\"]]");
-}*/
-
