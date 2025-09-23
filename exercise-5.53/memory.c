@@ -12,9 +12,9 @@
 #include <ctype.h>
 #include "memory.h"
 
-#define MEMORY_COLLECT_SIZE 1000000
+#define MEMORY_COLLECT_SIZE 10000000
 #define MEMORY_SIZE (MEMORY_COLLECT_SIZE + 2000)
-#define SYMBOL_MEMORY_SIZE 200000
+#define SYMBOL_MEMORY_SIZE 4000000
 #define REGISTERS 200
 
 static cons memory1[MEMORY_SIZE];
@@ -24,19 +24,17 @@ static cell stack;
 static char symbol_memory1[SYMBOL_MEMORY_SIZE];
 static char symbol_memory2[SYMBOL_MEMORY_SIZE];
 
-static int freep;
-static int scanp;
+static long freep;
+static long scanp;
 static cons *root;
 static cell old;
 static cell newp;
 
 static cons *the_memory = memory1;
 static cons *new_memory = memory2;
+static long symbol_freep = 0;
 static char *the_symbol_memory = symbol_memory1;
 static char *new_symbol_memory = symbol_memory2;
-
-static int stack_ptr = 0;
-static int marker_ptr = 0;
 
 static push_register push_registers[REGISTERS];
 static relocate_register relocate_registers[REGISTERS];
@@ -236,6 +234,10 @@ extern int is_primitive_function(cell c) {
     return c.type == PRIMITIVE;
 }
 
+extern int is_undefined(cell c) {
+    return c.type == UNDEFINED;
+}
+
 extern int is_falsy(cell c) {
     return c.type == FALSE_LITERAL ||
            is_null(c) ||
@@ -316,8 +318,12 @@ static void relocate_old_result_in_new(int is_root) {
         }
     } else if(old.type == SYMBOL) {
         newp = old;
-        newsymbol = new_symbol_memory;
-        new_symbol_memory += strlen(old.datum.symbol) + 1;
+        newsymbol = new_symbol_memory + symbol_freep;
+        symbol_freep += strlen(old.datum.symbol) + 1;
+        if(symbol_freep >= SYMBOL_MEMORY_SIZE) {
+            printf("Out of memory -- symbol_cell\n");
+            exit(10);
+        }
         strcpy(newsymbol, old.datum.symbol);
         newp.datum.symbol = newsymbol;
     } else {
@@ -326,17 +332,17 @@ static void relocate_old_result_in_new(int is_root) {
 }
 
 extern void display_memory_usage() {
-    printf("%d/%d used\n", freep, MEMORY_COLLECT_SIZE);
+    printf("%ld/%d used\n", freep, MEMORY_COLLECT_SIZE);
 }
 
 static void gc_collect_inner(cons *root1) {
     cons *temp;
     char *symbol_temp;
 
-    //printf("gc collect\n");
     root = root1;
     freep = 0;
     scanp = 0;
+    symbol_freep = 0;
     set_pointer(&old, root);
     relocate_old_result_in_new(0);
     root = newp.datum.ptr;
@@ -464,10 +470,10 @@ extern cons *alloc_cell(cell head_cell, cell tail_cell) {
 }
 
 static char *alloc_symbol_inner(size_t size) {
-    char *result = the_symbol_memory;
+    char *result = the_symbol_memory + symbol_freep;
 
-    if(the_symbol_memory + size - the_symbol_memory < SYMBOL_MEMORY_SIZE) {
-        the_symbol_memory += size;
+    if(symbol_freep + size < SYMBOL_MEMORY_SIZE) {
+        symbol_freep += size;
         return result;
     } else {
         return NULL;
@@ -617,6 +623,10 @@ extern cons *extend_environment(cell unev, cell argl, cons *env) {
 }
 
 extern cell apply_primitive_function(cell fun, cell argl) {
+    if(fun.type != PRIMITIVE) {
+        display(head(fun));
+        PUT_ERROR("Not primitive -- apply_primitive_function", fun);
+    }
     return fun.datum.primitive(argl);
 }
 
