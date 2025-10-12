@@ -56,6 +56,7 @@ extern cons *save_registers();
 extern void restore_registers(cons *root_new);
 extern void add_register(push_register, relocate_register);
 extern cons *alloc_cell(cell head, cell tail);
+extern void gc_collect_if_possible();
 extern cell get_pointer(cons *ptr);
 extern cell get_nil();
 extern cell get_symbol(char *, int);

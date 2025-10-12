@@ -12,10 +12,12 @@
 #include <ctype.h>
 #include "memory.h"
 
-#define MEMORY_COLLECT_SIZE 10000000
+#define MEMORY_COLLECT_SIZE 300000
 #define MEMORY_SIZE (MEMORY_COLLECT_SIZE + 2000)
-#define SYMBOL_MEMORY_SIZE 4000000
+#define SYMBOL_MEMORY_SIZE 700000
 #define REGISTERS 200
+#define MEMORY_COLLECT_THRESHOLD 280000
+#define SYMBOL_COLLECT_THRESHOLD 680000
 
 static cons memory1[MEMORY_SIZE];
 static cons memory2[MEMORY_SIZE];
@@ -406,29 +408,22 @@ extern void restore_registers(cons *root_new) {
     }
 }
 
-static void gc_collect(cell *extra1, cell *extra2) {
+static void gc_collect() {
     cons *root_new = NULL;
 
     root_new = save_registers();
-    if(extra1 != NULL) {
-        root_new = alloc_cell_register(*extra1, root_new);
-    }
-    if(extra2 != NULL) {
-        root_new = alloc_cell_register(*extra2, root_new);
-    }
-
     gc_collect_inner(root_new);
 
     root_new = root;
-    if(extra2 != NULL) {
-        *extra2 = root_new->head_cell;
-        root_new = root_new->tail_cell.datum.ptr;
-    }
-    if(extra1 != NULL) {
-        *extra1 = root_new->head_cell;
-        root_new = root_new->tail_cell.datum.ptr;
-    }
     restore_registers(root_new);
+}
+
+extern void gc_collect_if_possible() {
+    if(freep > MEMORY_COLLECT_THRESHOLD || symbol_freep > SYMBOL_COLLECT_THRESHOLD) {
+        gc_collect();
+    } else {
+        // not collect
+    }
 }
 
 extern void add_register(push_register pusher, relocate_register relocater) {
@@ -460,12 +455,7 @@ extern cons *alloc_cell(cell head_cell, cell tail_cell) {
     if((result = alloc_cell_inner(head_cell, tail_cell)) != NULL) {
         return result;
     } else {
-        gc_collect(&head_cell, &tail_cell);
-        if((result = alloc_cell_inner(head_cell, tail_cell)) != NULL) {
-            return result;
-        } else {
-            PUT_ERROR("Out of memory -- alloc_cell", get_nil());
-        }
+        PUT_ERROR("Out of memory -- alloc_cell", get_nil());
     }
 }
 
@@ -486,12 +476,7 @@ static char *alloc_symbol(size_t size) {
     if((result = alloc_symbol_inner(size)) != NULL) {
         return result;
     } else {
-        gc_collect(NULL, NULL);
-        if((result = alloc_symbol_inner(size)) != NULL) {
-            return result;
-        } else {
-            PUT_ERROR("Out of memory -- alloc_symbol", get_nil());
-        }
+        PUT_ERROR("Out of memory -- alloc_symbol", get_nil());
     }
 }
 

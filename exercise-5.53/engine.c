@@ -650,7 +650,7 @@ static void read_parser() {
     }
 }
 
-extern cons *create_environment(cell program, cons *environment) {
+static void execute_machine(cell program, cons *environment) {
     cell tmpcomp;
 
     comp = program;
@@ -662,7 +662,12 @@ extern cons *create_environment(cell program, cons *environment) {
     save_continuation(continuation);
     while(next != NULL) {
         next();
+        gc_collect_if_possible();
     }
+}
+
+extern cons *create_environment(cell program, cons *environment) {
+    execute_machine(program, environment);
     return env;
 }
 
@@ -680,18 +685,7 @@ static cell parse_js(char *program, cons *environment) {
 }
 
 extern cell evaluate(cell program, cons *environment) {
-    cell tmpcomp;
-
-    comp = program;
-    val = scan_out_declarations(comp);
-    tmpcomp = list_of_unassigned(val);
-    env = extend_environment(val, tmpcomp, environment);
-    next = eval_dispatch;
-    continuation = NULL;
-    save_continuation(continuation);
-    while(next != NULL) {
-        next();
-    }
+    execute_machine(program, environment);
     return val;
 }
 
@@ -783,9 +777,9 @@ extern void init_cons() {
     add_register(push_fun, relocate_fun);
     add_register(push_argl, relocate_argl);
     add_register(push_unev, relocate_unev);
+    add_register(save_parser_env, restore_parser_env);
 
     read_parser();
     parser_env = create_environment(parse(parser1), env);
-    add_register(save_parser_env, restore_parser_env);
 }
 
