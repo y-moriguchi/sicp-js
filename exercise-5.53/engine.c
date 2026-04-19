@@ -32,8 +32,17 @@ static int is_literal(cell component) {
     return is_tagged_list(component, "literal");
 }
 
+extern cell make_literal(cell value) {
+    return pair(get_symbol_len("literal"), pair(value, get_nil()));
+}
+
 static cell literal_value(cell component) {
     return head(tail(component));
+}
+
+extern cell make_application(cell function_expression, cell argument_expressions) {
+    return pair(get_symbol_len("application"),
+                pair(function_expression, pair(argument_expressions, get_nil())));
 }
 
 static cell make_function(cell parameters, cell body, cons *env) {
@@ -76,6 +85,16 @@ static int is_unary_operator_combination(cell component) {
     return is_tagged_list(component, "unary_operator_combination");
 }
 
+extern cell make_unary_operator_combination(char *operator, cell expression) {
+    return pair(get_symbol_len("unary_operator_combination"),
+                pair(get_symbol_len(operator), pair(expression, get_nil())));
+}
+
+extern cell make_binary_operator_combination(char *operator, cell expression1, cell expression2) {
+    return pair(get_symbol_len("binary_operator_combination"),
+                pair(get_symbol_len(operator), pair(expression1, pair(expression2, get_nil()))));
+}
+
 static int is_operator_combination(cell component) {
     return is_unary_operator_combination(component) ||
            is_tagged_list(component, "binary_operator_combination");
@@ -85,7 +104,7 @@ static int is_lambda_expression(cell component) {
     return is_tagged_list(component, "lambda_expression");
 }
 
-static cell make_lambda_expression(cell params, cell body) {
+extern cell make_lambda_expression(cell params, cell body) {
     return pair(get_symbol_len("lambda_expression"),
                 pair(params,
                      pair(body, get_nil())));
@@ -95,8 +114,16 @@ static int is_sequence(cell component) {
     return is_tagged_list(component, "sequence");
 }
 
+extern cell make_sequence(cell seq) {
+    return pair(get_symbol_len("sequence"), pair(seq, get_nil()));
+}
+
 static cell sequence_statements(cell component) {
     return head(tail(component));
+}
+
+extern cell make_block(cell statements) {
+    return pair(get_symbol_len("block"), pair(statements, get_nil()));
 }
 
 static int is_block(cell component) {
@@ -138,10 +165,21 @@ static int is_declaration(cell component) {
            is_function_declaration(component);
 }
 
-static cell make_constant_declaration(cell name, cell value) {
+extern cell make_constant_declaration(cell name, cell value) {
     return pair(get_symbol_len("constant_declaration"),
                 pair(name,
                      pair(value, get_nil())));
+}
+
+extern cell make_variable_declaration(cell name, cell value) {
+    return pair(get_symbol_len("variable_declaration"),
+                pair(name,
+                     pair(value, get_nil())));
+}
+
+extern cell make_function_declaration(cell name, cell names, cell block) {
+    return pair(get_symbol_len("function_declaration"),
+                pair(name, pair(names, pair(block, get_nil()))));
 }
 
 static cell function_decl_to_constant_decl(cell component) {
@@ -197,6 +235,14 @@ static int is_name(cell component) {
     return is_tagged_list(component, "name");
 }
 
+extern cell make_conditional(char *tp, cell predicate, cell consequent, cell alternative) {
+    return pair(get_symbol_len(tp), pair(predicate, pair(consequent, pair(alternative, get_nil()))));
+}
+
+extern cell make_return_statement(cell expression) {
+    return pair(get_symbol_len("return_statement"), pair(expression, get_nil()));
+}
+
 static int is_conditional(cell component) {
     return is_tagged_list(component, "conditional_expression") ||
            is_tagged_list(component, "conditional_statement");
@@ -216,6 +262,10 @@ static cell conditional_alternative(cell component) {
 
 static int is_assignment(cell component) {
     return is_tagged_list(component, "assignment");
+}
+
+extern cell make_assignment(cell name, cell expression) {
+    return pair(get_symbol_len("assignment"), pair(name, pair(expression, get_nil())));
 }
 
 static char *assignment_symbol(cell component) {
@@ -238,7 +288,7 @@ static char *operator_symbol(cell component) {
     return check_and_get_symbol(head(tail(component)));
 }
 
-static cell make_name(char *operator) {
+extern cell make_name(char *operator) {
     return pair(get_symbol_len("name"), pair(get_symbol_len(operator), get_nil()));
 }
 
@@ -629,27 +679,6 @@ static void eval_dispatch() {
     }
 }
 
-#define BUF 4000000
-
-static char parser1[BUF];
-static cons *parser_env;
-
-static void read_parser() {
-    int i, ch;
-    FILE *file;
-
-    if((file = fopen("jsparser.txt", "r")) == NULL) {
-        perror("error");
-        exit(4);
-    } else {
-        for(i = 0; i < BUF - 1 && (ch = getc(file)) != EOF; i++) {
-            parser1[i] = ch;
-        }
-        parser1[i] = '\0';
-        fclose(file);
-    }
-}
-
 static void execute_machine(cell program, cons *environment) {
     cell tmpcomp;
 
@@ -671,26 +700,19 @@ extern cons *create_environment(cell program, cons *environment) {
     return env;
 }
 
-static cell parse_js(char *program, cons *environment) {
-    static char drive_parse[100000];
-    cell result;
-
-    if(strlen(program) > 99000) {
-        PUT_ERROR("too long program -- parse_js", get_nil());
-    } else {
-        sprintf(drive_parse, "['application',[['name',['parse',null]],[[['literal',[\034%s\034,null]],null],null]]]", program);
-        result = evaluate(parse(drive_parse), environment);
-        return result;
-    }
-}
-
 extern cell evaluate(cell program, cons *environment) {
     execute_machine(program, environment);
     return val;
 }
 
 extern cell execute(char *program) {
-    return evaluate(parse_js(program, parser_env), env);
+    cell parsed = parse_js_bison(program);
+
+    if(!is_null(parsed)) {
+        return evaluate(parsed, env);
+    } else {
+        return parsed;
+    }
 }
 
 static cell push_comp() {
@@ -749,14 +771,6 @@ static void relocate_unev(cell c) {
     unev = c;
 }
 
-static cell save_parser_env() {
-    return get_pointer(parser_env);
-}
-
-static void restore_parser_env(cell c) {
-    parser_env = check_and_get_cons_ptr(c);
-}
-
 #define CALL_CC \
     "['sequence',[[['constant_declaration',[['name',['call_cc',null]]," \
     "[['lambda_expression',[[['name',['k',null]],null],[['block',[['sequence'," \
@@ -777,9 +791,5 @@ extern void init_cons() {
     add_register(push_fun, relocate_fun);
     add_register(push_argl, relocate_argl);
     add_register(push_unev, relocate_unev);
-    add_register(save_parser_env, restore_parser_env);
-
-    read_parser();
-    parser_env = create_environment(parse(parser1), env);
 }
 
